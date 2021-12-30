@@ -7,15 +7,15 @@ REWRITE DESCRIPTION
 """
 
 import logging
-import os
 import requests
-import json
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram import Update, Bot
+from flask import Flask, request
+from db import TOKEN, PAIRINGS_SHEET, POINTS_TALLY_SHEET
 
-PORT = int(os.environ.get('PORT', '8443'))
-TOKEN = "5066378494:AAF7F9kK6JfPjsR0rricjqhGvcrnB80zSzk"
-PAIRINGS_SHEET = "https://api.sheety.co/88b03a94afafb9c4b54898d7a83e64de/coMaraderieBot/pairings"
-POINTS_TALLY_SHEET = "https://api.sheety.co/88b03a94afafb9c4b54898d7a83e64de/coMaraderieBot/pointsTally"
+app = Flask(__name__)
+bot = Bot(token=TOKEN)
+URL = "https://commaraderiebot.meganwee.repl.co"
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -50,6 +50,7 @@ def checkcompanion(update, context):
     teleHandle = "@" + update.message.from_user.username
     response = requests.get(PAIRINGS_SHEET) #response is a requests.Response Object
     response_json = response.json() #transforms response into json format
+    output_message = "Sorry! You're not a recognised participant :("
 
     for person in response_json["pairings"]:
         # print(person)
@@ -65,6 +66,7 @@ def checksocialxp(update, context):
     response = requests.get(POINTS_TALLY_SHEET) #response is a requests.Response Object
     response_json = response.json() #transforms response into json format
     updatedAsOf = ""
+    output_message = "Sorry! You're not a recognised participant :("
     # update.message.reply_text(response.text)
 
     for pair in response_json["pointsTally"]:
@@ -83,6 +85,7 @@ def checkpaircode(update, context):
     teleHandle = "@" + update.message.from_user.username
     response = requests.get(PAIRINGS_SHEET) #response is a requests.Response Object
     response_json = response.json() #transforms response into json format
+    output_message = "Sorry! You're not a recognised participant :("
 
     for person in response_json["pairings"]:
         # print(person)
@@ -116,26 +119,53 @@ def main():
     # log all errors
     dp.add_error_handler(error)
 
-    # Start the Bot
-    updater.start_polling() # this is to run the bot locally
-    # Run the bot until you press Ctrl-C or the process receives SIGINT,
-    # SIGTERM or SIGABRT. This should be used most of the time, since
-    # start_polling() is non-blocking and will stop the bot gracefully.
-    
-    # updater.start_webhook(listen="0.0.0.0",
-    #                       port=int(PORT),
-    #                       url_path=TOKEN)
-    # updater.bot.setWebhook('https://comaraderiebot.herokuapp.com/' + TOKEN)
+    # Start the Bot locally, removed due to app.run()
+    # updater.start_polling() 
 
-    updater.idle()
+@app.route('/{}'.format(TOKEN), methods=['POST'])
+def respond() -> None:
+    update: Update = Update.de_json(request.get_json(force=True), bot)
+    print(update)
+    dispatcher = setup(bot)
+    dispatcher.process_update(update)
+    return "ok"
 
 
-if __name__ == '__main__':
-    main()
+@app.route('/setwebhook', methods=['GET', 'POST'])
+def set_webhook():
+    # we use the bot object to link the bot to our app which live
+    # in the link provided by URL
+    s: bool = bot.setWebhook('{URL}{HOOK}'.format(URL=URL, HOOK=TOKEN))
+    # something to let us know things work
+    if s:
+        print("webhook setup ok")
+        return "webhook setup ok"
+    else:
+        return "webhook setup failed"
+
+
+@app.route('/removeWebhook', methods=['GET', 'POST'])
+def remove_webhook():
+    s: bool = bot.deleteWebhook(drop_pending_updates=True)
+    if s:
+        return "webhook removed"
+    else:
+        return "webhook removed unsuccessfully"
+
+
+@app.route('/')
+def index():
+    return '.'
+
+if __name__ == 'main':
+    # note the threaded arg which allow your app to have more than one thread
+    app.run("0.0.0.0", threaded=True)
+    set_webhook()
 
 '''
 References:
 https://www.codementor.io/@karandeepbatra/part-1-how-to-create-a-telegram-bot-in-python-in-under-10-minutes-19yfdv4wrq
 https://elements.heroku.com/buttons/anshumanfauzdar/telegram-bot-heroku-deploy
 https://www.dataquest.io/blog/python-api-tutorial/
+https://docs.replit.com/tutorials/18-telegram-bot 
 '''
